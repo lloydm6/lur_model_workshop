@@ -39,27 +39,27 @@ to_raster_lm <- to_raster_gam <- to_raster
 
 to_fishnet_lu_pred <- 
   to_fishnet_lu %>%
-  mutate(pred_bc_lm = predict(lm_all_data, .),  # generate linear model predictions for each cell in the raster
-         pred_bc_gam = predict(gam_all_data, .) %>% as.vector()) %>% # generate gam predictions for each cell in the raster
+  mutate(pred_pm25_lm = predict(lm_all_data, .),  # generate linear model predictions for each cell in the raster
+         pred_pm25_gam = predict(gam_all_data, .) %>% as.vector()) %>% # generate gam predictions for each cell in the raster
   arrange(cell_id)
 
-raster::values(to_raster_lm) <- to_fishnet_lu_pred$pred_bc_lm
-raster::values(to_raster_gam) <- to_fishnet_lu_pred$pred_bc_gam
+raster::values(to_raster_lm) <- to_fishnet_lu_pred$pred_pm25_lm
+raster::values(to_raster_gam) <- to_fishnet_lu_pred$pred_pm25_gam
 
 to_raster_stack <- stack(to_raster, to_raster_lm, to_raster_gam)
 
-names(to_raster_stack) <- c("cell_id", "pred_bc_lm", "pred_bc_gam")
+names(to_raster_stack) <- c("cell_id", "pred_pm25_lm", "pred_pm25_gam")
 
 tmap_mode("view")
 tm_shape(to_border_sf_utm) +
   tm_polygons("gray", alpha = 0.1) +
-  tm_shape(to_raster_stack) +
+  tm_shape(dropLayer(to_raster_stack, 1)) +
   tm_raster(alpha = 0.5)
 
-# find where the negatives are 
+# just inpsect the gam layer
 tm_shape(to_border_sf_utm) +
   tm_polygons("lightblue", alpha = 0.1) +
-  tm_shape(raster(to_raster_stack, layer = 3) < 0) +  # a simple operation on the gam layer gives a useful result
+  tm_shape(raster(to_raster_stack, layer = 3)) + 
   tm_raster(alpha = 0.5)
 
 # use mask() to get rid of cells beyond the borders. the first argument is the raster and the second is the vector, but instead of an sf objects, it needs to be a spatial object  
@@ -69,7 +69,7 @@ to_raster_stack_all_data <-
 
 tm_shape(to_border_sf_utm) +
   tm_polygons("lightblue", alpha = 0.1) +
-  tm_shape(to_raster_stack_all_data) +
+  tm_shape(dropLayer(to_raster_stack_all_data, 1)) +
   tm_raster(alpha = 0.5) + 
   tm_shape(to_sites_lu_sf) +
   tm_dots("purple")  # add our monitoring sites
@@ -108,7 +108,7 @@ to_raster_stack_lm_ho <- mask(to_raster_stack_lm_ho, as_Spatial(to_border_sf_utm
 tm_shape(to_border_sf_utm) +
   tm_polygons("lightblue", alpha = 0.1) +
   tm_shape(to_raster_stack_lm_ho) +
-  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(0, 10000,by = 1000)) + 
+  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(5, 9, by = 0.25)) + 
   tm_shape(to_sites_lu_sf) +
   tm_dots("purple")
 
@@ -127,7 +127,7 @@ to_raster_stack_gam_ho <- mask(to_raster_stack_gam_ho, as_Spatial(to_border_sf_u
 tm_shape(to_border_sf_utm) +
   tm_polygons("lightblue", alpha = 0.1) +
   tm_shape(to_raster_stack_gam_ho) +
-  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(0, 10000,by = 1000)) + 
+  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(5, 9, by = 0.25)) + 
   tm_shape(to_sites_lu_sf) +
   tm_dots("purple")
 
@@ -135,7 +135,7 @@ tm_shape(to_border_sf_utm) +
 tm_shape(to_border_sf_utm) +
   tm_polygons("lightblue", alpha = 0.1) +
   tm_shape(mean(to_raster_stack_gam_ho)) +  # you can also look at the average of the layers
-  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(0, 10000,by = 1000)) + 
+  tm_raster(alpha = 0.7, palette = "-RdYlGn", breaks = seq(5, 9, by = 0.25)) + 
   tm_shape(to_sites_lu_sf) +
   tm_dots("purple")
 
@@ -164,8 +164,8 @@ to_fishnet_gam <- st_as_sf(st_as_stars(raster(to_raster_stack_all_data, layer = 
 
 fishnet_gg <- 
   ggplot(to_fishnet_gam) +
-  geom_sf(aes(fill = pred_bc_gam), lwd = 0) +
-  scale_fill_distiller(palette = "RdYlGn", direction = -1, aesthetics = "fill", breaks = seq(0, 10000,by = 1000)) +
+  geom_sf(aes(fill = pred_pm25_gam), lwd = 0) +
+  scale_fill_distiller(palette = "RdYlGn", direction = -1, aesthetics = "fill", breaks = seq(5, 9, by = 0.25)) +
   theme(legend.position = "none",
         axis.line=element_blank(),
         axis.text.x=element_blank(), axis.title.x=element_blank(),
@@ -173,21 +173,21 @@ fishnet_gg <-
         axis.ticks=element_blank(),
         panel.background = element_blank()) +
   # theme_bw() +
-  xlab("Longitude") + ylab("Latitude") + labs(fill = "Predicted BC Concentration (ng/m\u00B3)")
+  xlab("Longitude") + ylab("Latitude") + labs(fill = "Predicted PM2.5 Concentration (ug/m\u00B3)")
 
 plot_gg(fishnet_gg,width=12,height=7,scale=250,windowsize=c(1000, 600), solid = FALSE,
         raytrace=FALSE, zoom = 0.35, phi = 45, theta = 15, triangulate = TRUE, max_error = 0)
 
 # can save that view as an image
-render_snapshot("figures/rayshader_bc_pred.png")
+render_snapshot("figures/rayshader_pm25_pred.png")
 
-render_movie(  title_text = "Toronto Predicted BC Concentration",
+render_movie(  title_text = "Toronto Predicted PM2.5 Concentration",
                title_offset = c(20, 20),
                title_color = "black",
                title_size = 90,
                title_font = "sans",
                fps = 30, frames = 720,
-               "figures/rayshader_bc_pred.mp4")
+               "figures/rayshader_pm25_pred.mp4")
 
 
 

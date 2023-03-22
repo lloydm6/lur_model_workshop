@@ -1,3 +1,4 @@
+library(nngeo)
 library(lhs)
 library(tmap)
 library(geohash)
@@ -21,6 +22,7 @@ main_dir <- ""  # in case you want to change the main directory
 new_dirs <- paste0(main_dir, 
                   c("figures", 
                     "data", 
+                    "data/canue_data",
                     "data/land_use_data", 
                     "data/models", 
                     "data/monitoring_data", 
@@ -145,29 +147,101 @@ tm_shape(to_border_sf) +
   tm_polygons(alpha = 0.2) + 
   tm_shape(to_sites) +
   tm_dots(col = "ghc_p5") +
-  tm_text("site_id")
+  tm_text("site_id", xmod = 1)
 
 # get pollution levels at monitoring sites #####
-###### ME CHANGE THIS TO CANUE DATA ######
-pred_surf <- 
-  st_read("../../../../../Sync/Research Projects/HEI RFA 19-1/data_files/processed/Montreal and Toronto Surfaces/Backcast and 2020 Surfaces/Toronto/toronto_backast_and_2020_surfaces.shp") %>%
-  filter(year == 2020, model == "lur")
 
-site_surf_intx <- st_intersects(to_sites, pred_surf)
+# pm2.5
+pm25_levels <- read_csv("data/canue_data/pm25dalc_a_2023-03-21_16-55-44_annual/pm25dalc_a_18.csv")
 
-surf_intx <- 
-  pred_surf %>% 
-  slice(unlist(site_surf_intx))
+pm25_pcodes <- 
+  read_csv("data/canue_data/pm25dalc_a_2023-03-21_16-55-44_annual/DMTI_SLI_18.csv") %>%
+  rename(postalcode18 = POSTALCODE18) %>%
+  st_as_sf(., coords = c("LONGITUDE_18", "LATITUDE_18"), crs = 4326)
 
-tm_shape(surf_intx) +
-  tm_polygons("bc") + 
+pm25_pcodes_in_to <- 
+  st_intersects(pm25_pcodes, to_border_sf, sparse = F)
+
+tm_shape(pm25_pcodes[pm25_pcodes_in_to,]) +
+  tm_dots()
+
+to_pm25 <- 
+  pm25_pcodes[pm25_pcodes_in_to, ] %>%
+  left_join(., pm25_levels)
+
+tm_shape(to_pm25[1:20000, ]) +
+  tm_dots("pm25dal18_01")
+
+to_site_pm25_nn <- st_nn(to_sites, to_pm25, progress = T)
+
+to_sites$pm25 <- to_pm25 %>% slice(unlist(to_site_pm25_nn)) %>% pull(pm25dal18_01)
+
+tm_shape(to_pm25 %>% slice(unlist(to_site_pm25_nn))) +
+  tm_dots(size = 2, col = "purple") +
   tm_shape(to_sites) +
   tm_dots()
 
-to_sites <- 
-  to_sites %>%
-  mutate(bc = surf_intx$bc,
-         ufp = surf_intx$ufp)
+# o3 
+o3_levels <- read_csv("data/canue_data/o3chg_a_2023-03-21_17-19-18_annual/o3chg_a_15.csv")
 
+o3_pcodes <- 
+  read_csv("data/canue_data/o3chg_a_2023-03-21_17-19-18_annual/DMTI_SLI_15.csv") %>%
+  rename(postalcode15= POSTALCODE15) %>%
+  st_as_sf(., coords = c("LONGITUDE_15", "LATITUDE_15"), crs = 4326)
+
+o3_pcodes_in_to <- 
+  st_intersects(o3_pcodes, to_border_sf, sparse = F)
+
+tm_shape(o3_pcodes[o3_pcodes_in_to,]) +
+  tm_dots()
+
+to_o3 <- 
+  o3_pcodes[o3_pcodes_in_to, ] %>%
+  left_join(., o3_levels)
+
+tm_shape(to_o3[1:20000, ]) +
+  tm_dots("o3chg15_01")
+
+to_site_o3_nn <- st_nn(to_sites, to_o3, progress = T)
+
+to_sites$o3 <- to_o3 %>% slice(unlist(to_site_o3_nn)) %>% pull(o3chg15_01)
+
+tm_shape(to_o3 %>% slice(unlist(to_site_o3_nn))) +
+  tm_dots(size = 2, col = "purple") +
+  tm_shape(to_sites) +
+  tm_dots()
+
+# noise
+noise_levels <- read_csv("data/canue_data/nhnse_ava_2023-03-21_17-21-36_annual/nhnse_ava_19.csv")
+
+noise_pcodes <- 
+  read_csv("data/canue_data/nhnse_ava_2023-03-21_17-21-36_annual/DMTI_SLI_19.csv") %>%
+  rename(postalcode19 = POSTALCODE19) %>%
+  st_as_sf(., coords = c("LONGITUDE_19", "LATITUDE_19"), crs = 4326)
+
+noise_pcodes_in_to <- 
+  st_intersects(noise_pcodes, to_border_sf, sparse = F)
+
+tm_shape(noise_pcodes[noise_pcodes_in_to,]) +
+  tm_dots()
+
+to_noise <- 
+  noise_pcodes[noise_pcodes_in_to, ] %>%
+  left_join(., noise_levels) %>%
+  filter(nhnse19_03 > 0)
+
+tm_shape(to_noise[1:10000, ]) +
+  tm_dots("nhnse19_03")
+
+to_site_noise_nn <- st_nn(to_sites, to_noise, progress = T)
+
+to_sites$noise <- to_noise %>% slice(unlist(to_site_noise_nn)) %>% pull(nhnse19_03)
+
+tm_shape(to_noise %>% slice(unlist(to_site_noise_nn))) +
+  tm_dots(size = 2, col = "purple") +
+  tm_shape(to_sites) +
+  tm_dots()
+
+# save the site data
 write_csv(to_sites %>% st_set_geometry(NULL), "data/monitoring_data/to_monitoring_sites.csv")
 

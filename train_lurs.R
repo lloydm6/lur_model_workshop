@@ -20,13 +20,12 @@ library(tidyverse)
 
 to_sites_lu <- read_csv("data/land_use_data/to_sites_lu.csv")
 
-
 # variable selection ####
 uni_lin_regs <- 
   to_sites_lu %>%
   pivot_longer(cols = green_200m:distance_npri_nox, names_to = "lu_var", values_to = "value") %>%  # make the wide data long
   split(.$lu_var) %>%   # turn the data frame into a list of data frames. each data frame in this list will have a single land use variable
-  map(., ~lm(data = ., bc ~ value)) %>%  # for each data frame in the list, regress the land use variable values onto the outcome of interest. 
+  map(., ~lm(data = ., pm25 ~ value)) %>%  # for each data frame in the list, regress the land use variable values onto the outcome of interest. 
   map(., ~broom::glance(.)) %>% # glance() summarizes the linear model
   imap(., ~mutate(.x, lu_var = .y)) %>% # imap() is like map() except is also uses the names of the items in the list. here we are using the names to create a new column that is filled with the names
   bind_rows() %>%  # bind the rows of all the items in the list. this gets us ba
@@ -51,7 +50,7 @@ uni_lin_regs_no_outs <-
   split(.$lu_var) %>%
   map(., ~mutate(., mean_val = mean(value), sd_val = sd(value), std_val = (value - mean_val)/sd_val)) %>%  # calculate standardized value for each land use variable, 
   map(., ~filter(., abs(std_val) < 2)) %>%  # remove any observations that are greater that 2 sds from the mean
-  map(., ~lm(data = ., bc ~ value) %>% glance()) %>%
+  map(., ~lm(data = ., pm25 ~ value) %>% glance()) %>%
   imap(., ~mutate(.x, lu_var = .y)) %>%
   bind_rows() %>%
   dplyr::select(lu_var, r2 = r.squared, logLik, AIC, pval = p.value)
@@ -68,10 +67,10 @@ selected_vars_no_outs_df <-
 # see which are driven by outliers
 outlier_check <- 
   full_join(selected_vars_no_outs_df %>% dplyr::select(lu_var, no_outliers_r2 = r2),
-          selected_vars_df %>% dplyr::select(lu_var, r2 = r2))
+          selected_vars_df %>% dplyr::select(lu_var, r2 = r2)); outlier_check
 # any with NA in the no_outliers_r2 column are diven by outliers
 # need to decide what to do. keep only those that are both?
-plot(to_sites_lu$bc ~ to_sites_lu$road_500m)
+plot(to_sites_lu$pm25 ~ to_sites_lu$road_500m)
 
 lu_var_to_remove <- 
   outlier_check %>% 
@@ -80,10 +79,10 @@ lu_var_to_remove <-
 # see if any of the distance_to that didn't make it in are non-linear
 uni_nlin_regs <- 
   to_sites_lu %>%
-  dplyr::select(lon, lat, bc, contains("distance"), -str_subset(selected_vars_df$lu_var, "dist" )) %>%
+  dplyr::select(lon, lat, pm25, contains("distance"), -str_subset(selected_vars_df$lu_var, "dist" )) %>%
   pivot_longer(cols = contains("distance"), names_to = "dist_lu_var", values_to = "value") %>%
   split(.$dist_lu_var) %>%
-  map(., ~lm(data = ., bc ~ value + I(value^2)) %>% glance()) %>%
+  map(., ~lm(data = ., pm25 ~ value + I(value^2)) %>% glance()) %>%
   imap(., ~mutate(.x, dist_lu_var = .y)) %>%
   bind_rows() %>%
   dplyr::select(dist_lu_var, r2 = r.squared, logLik, AIC, pval = p.value)
@@ -112,8 +111,8 @@ lu_hi_cor <-
 
 selected_vars_df %>% 
   filter(lu_var %in% colnames(lu_hi_cor))
-# remove busroutes and remove open (open was already removed due to outliers)
-lu_var_to_remove <- c(lu_var_to_remove, "busroutes_500m")
+# remove busstop, remove green, and remove open (green and open were already removed due to outliers)
+lu_var_to_remove <- c(lu_var_to_remove, "busstop_500m")
 
 # it's handy to have an object of all the variable names
 lur_vars <- 
@@ -124,11 +123,11 @@ lur_vars <-
 # train linear model - add RMSE to model results #####
 
 # check the distribution of the outcome. if it is skewed, we may consider log-transforming it
-hist(to_sites_lu$bc)
+hist(to_sites_lu$pm25)
 
 # we'll create a formula object that we can use any time we use lm()
 # we keep longitude and latitude in it in order to model the spatial dependencies that are not captured by the land use parameters
-lm_lur_formula <- as.formula(paste0("bc ~ ", paste(lur_vars, collapse = " + "), " + lon + lat"))
+lm_lur_formula <- as.formula(paste0("pm25 ~ ", paste(lur_vars, collapse = " + "), " + lon + lat"))
 lm_lur_formula
 
 # try training a model on all data
@@ -161,7 +160,7 @@ lm_pred_test_sets <-
   map(as.list(my_sets), ~filter(to_sites_lu, set == .)) %>% # map(., ~select(., site_id, set)) # create a list of only the hold out sets
   setNames(., paste0("test_", my_sets)) %>%
   map2(., train_set_lms_list, ~mutate(.x, pred_lm = predict(.y, .x))) %>% # map2() takes two lists, so use the list of linear models to generate predictions in the list of hold out sets
-  map(., ~mutate(., resid_lm = bc - pred_lm)) # get the residuals
+  map(., ~mutate(., resid_lm = pm25 - pred_lm)) # get the residuals
 
 # a quick verification that we did what we wanted to do
 to_sites_lu %>% filter(set == 4) %>%
@@ -171,7 +170,7 @@ lm_pred_test_sets$test_4 %>% pull(pred_lm)
 # now get the r2 value in the test sets
 lm_ho_model_eval <- 
   lm_pred_test_sets %>%
-  map(., ~lm(data = ., bc ~ pred_lm) %>% glance()) %>% # compare predicted to observed
+  map(., ~lm(data = ., pm25 ~ pred_lm) %>% glance()) %>% # compare predicted to observed
   bind_rows() 
 
 lm_ho_model_eval %>%
@@ -181,23 +180,23 @@ lm_ho_model_eval %>%
 to_sites_lu_lm_preds <- 
   map(train_set_lms_list, ~mutate(to_sites_lu, pred_lm = predict(., to_sites_lu))) %>%
   imap(., ~mutate(.x,
-                  resid_lm = bc - pred_lm,
+                  resid_lm = pm25 - pred_lm,
                   train_on = .y)) %>%
   bind_rows() %>% 
   pivot_wider(., names_from = "train_on", values_from = c("pred_lm", "resid_lm")) %>%
   mutate(mean_pred_lm = rowMeans(dplyr::select(., starts_with("pred_")))) %>%
   mutate(mean_resid_lm = rowMeans(dplyr::select(., starts_with("resid_")))) %>%
   mutate(pred_lm_all = predict(lm_all_data, .),
-         resid_lm_all = bc - pred_lm_all)
+         resid_lm_all = pm25 - pred_lm_all)
 
 to_sites_lu_lm_preds %>%
-  pivot_longer(cols = c(bc, pred_lm_ho_1:pred_lm_ho_4, mean_pred_lm, pred_lm_all)) %>%
+  pivot_longer(cols = c(pm25, pred_lm_ho_1:pred_lm_ho_4, mean_pred_lm, pred_lm_all)) %>%
   ggplot(data =., aes(x = value, col = name, fill = name)) +
   geom_density(alpha = 0.5) + 
   theme_bw()
 
 # instead of linear models, train Generalized Additive Models, but only to allow more flexibility on the lat and long #####
-gam_lur_formula <- as.formula(paste0("bc ~ ", paste(lur_vars, collapse = " + "), " + te(lon, lat, k = 7)")) # te(lon, lat, k = 7) is a tensor producti of lat and long. bascially an interaction term. k = 7 is the number of basis functions, which it the level of flexibility. higher is more flexible, but we run out of degrees of freedom. you will get an error if it's too high    
+gam_lur_formula <- as.formula(paste0("pm25 ~ ", paste(lur_vars, collapse = " + "), " + te(lon, lat, k = 7)")) # te(lon, lat, k = 7) is a tensor producti of lat and long. bascially an interaction term. k = 7 is the number of basis functions, which it the level of flexibility. higher is more flexible, but we run out of degrees of freedom. you will get an error if it's too high    
 gam_all_data <- mgcv::gam(data = to_sites_lu, gam_lur_formula, method = "REML") # train on all data
 
 # train on 4 folds
@@ -210,7 +209,7 @@ gam_pred_test_sets <-
   map(as.list(my_sets), ~filter(to_sites_lu, set == .)) %>%
   setNames(., paste0("test_", my_sets)) %>%
   map2(., train_set_gams_list, ~mutate(.x, pred_gam = predict(.y, .x))) %>%
-  map(., ~mutate(., resid_gam = bc - pred_gam))
+  map(., ~mutate(., resid_gam = pm25 - pred_gam))
 
 to_sites_lu %>% filter(set == 4) %>%
   predict(train_set_gams_list$ho_4, .)
@@ -218,7 +217,7 @@ gam_pred_test_sets$test_4
 
 gam_ho_model_eval <- 
   gam_pred_test_sets %>%
-  map(., ~lm(data = ., bc ~ pred_gam) %>% glance()) %>%
+  map(., ~lm(data = ., pm25 ~ pred_gam) %>% glance()) %>%
   bind_rows() 
 
 gam_ho_model_eval %>%
@@ -227,17 +226,17 @@ gam_ho_model_eval %>%
 to_sites_lu_gam_preds <- 
   map(train_set_gams_list, ~mutate(to_sites_lu, pred_gam = predict(., to_sites_lu))) %>%
   imap(., ~mutate(.x, 
-                  resid_gam = bc - pred_gam,
+                  resid_gam = pm25 - pred_gam,
                   train_on = .y)) %>%
   bind_rows() %>%
   pivot_wider(., names_from = "train_on", values_from = c("pred_gam", "resid_gam")) %>%
   mutate(mean_pred_gam = rowMeans(dplyr::select(., starts_with("pred_gam")))) %>%
   mutate(mean_resid_gam = rowMeans(dplyr::select(., starts_with("resid_gam")))) %>%
   mutate(pred_gam_all = predict(gam_all_data, .),
-         resid_gam_all = bc - pred_gam_all)
+         resid_gam_all = pm25 - pred_gam_all)
 
 to_sites_lu_gam_preds %>%
-  pivot_longer(cols = c(bc, pred_gam_ho_1:pred_gam_ho_4, mean_pred_gam, pred_gam_all)) %>%
+  pivot_longer(cols = c(pm25, pred_gam_ho_1:pred_gam_ho_4, mean_pred_gam, pred_gam_all)) %>%
   ggplot(data =., aes(x = value, col = name, fill = name)) +
   geom_density(alpha = 0.5) + 
   theme_bw()
@@ -270,14 +269,14 @@ for(j in 1:4){
 }
 
 # inspect Cook's distance points from each lm
-lm_cooks_points <- list(30, 37, 41, 23)
-lm_qq_points <- list(c(6, 34, 40), c(19, 25, 40), c(9, 26, 29), c(9, 16, 20))
+lm_cooks_points <- list(c(31, 61, 70), c(1, 74, 76), c(4, 66, 76), c(60, 62, 63))
+lm_qq_points <- list(c(61, 70, 65), c(76, 74, 78), c(66, 76, 72), c(60, 63, 62))
 
-map(lm_train_sets, ~.$model) %>%
+map(train_set_lms_list, ~.$model) %>%
   map2(lm_cooks_points, ., ~slice(.y, .x)) %>%
   imap(., ~mutate(.x, model_name = .y) %>% relocate(model_name)) %>%
   bind_rows() %>% 
-  arrange(bc)
+  arrange(pm25)
 
 # gam 
 par(mfrow = c(1,1))
@@ -290,10 +289,13 @@ gam.check(train_set_gams_list$ho_4)
 # also check the lat
 check(getViz(gam_all_data))
 
+par(mfrow = c(1,2))
 vis.gam(gam_all_data, c("lon", "lat"), color = "terrain", plot.type = "contour",
         theta = 0, phi = 45)
 vis.gam(gam_all_data, c("lon", "lat"), color = "terrain", plot.type = "persp",
         theta = 0, phi = 45)
+
+par(mfrow = c(2,2))
 vis.gam(train_set_gams_list$ho_1, c("lon", "lat"), color = "terrain", plot.type = "persp",
         theta = 0, phi = 45)
 vis.gam(train_set_gams_list$ho_2, c("lon", "lat"), color = "terrain", plot.type = "persp",
