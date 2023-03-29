@@ -1,6 +1,28 @@
+##############################################################################################################
+# LAND USE REGRESSION MODELING OF AIR QUALITY USING R ########################################################
+# GeoHealth Network Workshop Series: Advanced Spatial Analysis for Health Geographers ########################
 
 ##############################################################################################################
-# PACKAGES #######################################################
+# SUPPORT AND FUNDING ########################################################################################
+
+# This workshop is presented in collaboration by: 
+  # GeoHealth Network, 
+  # The Canadian Urban Environmental Health Research Consortium (CANUE), 
+  # Population Data BC, and 
+  # University of Victoria Continuing Studies
+# This workshop is sponsored by: 
+  # University of Toronto Tri-Campus Graduate Program in Geography and Planning, School of Cities, and 
+  # University of Toronto - Mississauga (The Angela B. Lange and Ian Orchard Graduate Student Initiatives Fund)
+
+##############################################################################################################
+# Code author ################################################################################################
+
+# Marshall Lloyd
+  # McGill University PhD Epidemiology Candidate
+  # https://github.com/lloydm6/lur_model_workshop
+
+##############################################################################################################
+# PACKAGES ###################################################################################################
 # create a vector of all the packages (i.e. libraries) we will use
 required_packages <- c("purrr",        # purrr for data manipulation using the map() and split() functions
                        "shinyjs",      # shinyjs we'll once to help us pick a color template
