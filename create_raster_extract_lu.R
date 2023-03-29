@@ -60,7 +60,6 @@ tm_shape(to_border_sf_utm) +
 # we can transform our raster to vector geography. That is what we'll do in order to extract land use data around each cell. 
 to_fishnet <- st_as_sf(st_as_stars(to_raster), as_points = F, merge = T)
 
-
 to_fishnet_500m <- st_buffer(to_fishnet, dist = 500)
 to_fishnet_200m <- st_buffer(to_fishnet, dist = 200)
 # 
